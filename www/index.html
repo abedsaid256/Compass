@@ -377,7 +377,8 @@ function renderToday(){
   else if(it&&!it.dismissed){
     h+='<div class="card"><div class="eyebrow">One thing that would make today better</div>'
       +'<p class="serif" style="font-size:17px;margin:8px 0">'+(it.done?'<span class="done">':'')+esc(it.text)+(it.done?'</span>':'')+'</p>'
-      +(it.done?'':'<div class="btnrow"><button class="btn slim" data-act="startTimer" data-a1="25">\u25B6 Start 25m</button><button class="btn slim" data-act="startTimer" data-a1="45">\u25B6 45m</button></div>')
+      +(it.done?'':'<div class="btnrow"><button class="btn slim" data-act="startTimer" data-a1="25">\u25B6 25m</button><button class="btn slim" data-act="startTimer" data-a1="45">\u25B6 45m</button><button class="btn ghost slim" data-act="showCustomTimer">Custom\u2026</button></div>'
+        +'<div class="row" id="customTimerRow" style="display:none;margin-top:8px"><input type="number" id="customMins" min="1" max="480" placeholder="Minutes" style="margin:0;flex:1"><button class="btn slim" data-act="startCustomTimer">\u25B6 Go</button></div>')
       +'<div class="btnrow"><button class="btn '+(it.done?'':'ghost ')+'slim" data-act="toggleIntentionDone">'+(it.done?'Undo':'Done \u2713')+'</button><button class="btn ghost slim" data-act="newIntention">Change</button></div></div>';
   }else if(it&&it.dismissed){
     h+='<div style="text-align:center;margin-bottom:14px"><button class="linklike" data-act="newIntention">Suggest one thing for today</button></div>';
@@ -1044,6 +1045,8 @@ var ACT={
   adoptIdea:function(el){adoptIdea(a1(el));},
   shuffleIdeas:function(){ideaShift++;renderExplore();},
   startTimer:function(el){startTimer(+a1(el));},
+  showCustomTimer:function(){var r=$('customTimerRow');if(r){r.style.display='flex';var i=$('customMins');if(i)i.focus();}},
+  startCustomTimer:function(){var i=$('customMins'),v=parseInt(i&&i.value,10);if(!v||v<1){toast('Enter minutes (1\u2013480)');return;}startTimer(Math.min(v,480));},
   finishTimer:function(){finishTimer();},
   cancelTimer:function(el){if(armed(el,'Tap again to cancel'))dismissTimer();},
   dismissTimer:function(){dismissTimer();},

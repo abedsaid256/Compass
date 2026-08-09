@@ -492,10 +492,10 @@ function saveCheckin(){
 }
 
 /* ================= ACTIVITIES ================= */
-var actTemp={mode:null,needs:[]};
+var actTemp={mode:null,needs:[],goals:[]};
 function openActivityForm(id){
   var a=id?DB.activities.filter(function(x){return x.id===id;})[0]:null;
-  actTemp={mode:a?a.mode:null,needs:a&&a.needs?a.needs.slice():[]};
+  actTemp={mode:a?a.mode:null,needs:a&&a.needs?a.needs.slice():[],goals:a&&a.goals?a.goals.slice():[]};
   var h='<h2>'+(a?'Edit activity':'Log an activity')+'</h2>'
     +'<label class="f">What did you do?</label><input type="text" id="afName" value="'+esc(a?a.name:'')+'" placeholder="e.g. Studied pharmacology, gym, coffee with a friend">'
     +'<label class="f">Date</label><input type="date" id="afDate" value="'+(a?a.date:today())+'">'
@@ -505,7 +505,16 @@ function openActivityForm(id){
     +'<button id="am-live" class="'+(actTemp.mode==='live'?'on':'')+'" data-act="actMode" data-a1="live">LIVE</button>'
     +'<button id="am-rest" class="'+(actTemp.mode==='rest'?'on':'')+'" data-act="actMode" data-a1="rest">REST</button></div>'
     +'<div class="tiny muted" style="margin-top:-4px">Build = improves your future \u00b7 Live = enriches the present \u00b7 Rest = recovery and pleasure</div>'
-    +'<label class="f" style="margin-top:10px">Needs served (tap any that apply)</label><div class="chips">';
+    +'<label class="f" style="margin-top:10px">Serves (tap any \u2014 a goal counts for its area automatically)</label>';
+  if(DB.goals.length){
+    h+='<div class="tiny muted" style="margin:2px 0">Your goals</div><div class="chips">';
+    for(var gi=0;gi<DB.goals.length;gi++){
+      var G0=DB.goals[gi];
+      h+='<button class="chip '+(actTemp.goals.indexOf(G0.id)>=0?'on':'')+'" id="ag-'+G0.id+'" data-act="toggleGoal" data-a1="'+G0.id+'">'+ICONOF[G0.need]+' '+esc(G0.title)+'</button>';
+    }
+    h+='</div><div class="tiny muted" style="margin:2px 0">General areas</div>';
+  }
+  h+='<div class="chips">';
   for(var i=0;i<NEEDS.length;i++){
     var N=NEEDS[i];
     h+='<button class="chip '+(actTemp.needs.indexOf(N.k)>=0?'on':'')+'" id="an-'+N.k+'" data-act="toggleNeed" data-a1="'+N.k+'">'+N.icon+' '+N.name+'</button>';
@@ -528,6 +537,11 @@ function actMode(m){
   for(var i=0;i<ms.length;i++){var b=$('am-'+ms[i]); if(b) b.classList.toggle('on',ms[i]===m);}
   var w=$('restFeelWrap'); if(w) w.style.display=(m==='rest')?'block':'none';
 }
+function toggleGoal(gid){
+  var i=actTemp.goals.indexOf(gid);
+  if(i>=0) actTemp.goals.splice(i,1); else actTemp.goals.push(gid);
+  var b=$('ag-'+gid); if(b) b.classList.toggle('on',i<0);
+}
 function toggleNeed(k){
   var i=actTemp.needs.indexOf(k);
   if(i>=0) actTemp.needs.splice(i,1); else actTemp.needs.push(k);
@@ -542,7 +556,15 @@ function saveActivity(id){
     date:$('afDate').value||today(),
     duration:parseInt($('afDur').value,10)||null,
     mode:actTemp.mode,
-    needs:actTemp.needs.slice(),
+    needs:(function(){
+      var nd=actTemp.needs.slice();
+      for(var q=0;q<actTemp.goals.length;q++){
+        var gg=getGoal(actTemp.goals[q]);
+        if(gg&&nd.indexOf(gg.need)<0) nd.push(gg.need);
+      }
+      return nd;
+    })(),
+    goals:actTemp.goals.slice(),
     notes:$('afNotes').value.trim(),
     restFeel:(actTemp.mode==='rest'&&$('afFeel'))?$('afFeel').value||null:null
   };
@@ -742,28 +764,41 @@ function saveNoticing(id){
 
 /* ================= GOALS ================= */
 function getGoal(id){for(var i=0;i<DB.goals.length;i++)if(DB.goals[i].id===id)return DB.goals[i]; return null;}
+function goalActs(gid,days){
+  var out=[];
+  for(var i=0;i<DB.activities.length;i++){
+    var a=DB.activities[i];
+    if(a.goals&&a.goals.indexOf(gid)>=0){ if(!days||days.indexOf(a.date)>=0) out.push(a); }
+  }
+  out.sort(function(x,y){return x.date<y.date?1:-1;});
+  return out;
+}
 function renderGoals(){
-  var h='<div class="card flat"><div class="eyebrow">Goals vs actions</div><p class="small muted" style="margin-top:6px">A <strong>goal</strong> is where you want to go. <strong>Actions</strong> are what you actually do. Goals are optional; actions are what count.</p></div>';
+  var h='<div class="card flat"><div class="eyebrow">How goals work here</div><p class="small muted" style="margin-top:6px">A goal is a direction, not a checklist. It fills itself from what you actually log \u2014 tag activities with a goal when you record them, and the evidence appears below it.</p></div>';
+  var days7=lastNDates(7);
   for(var n=0;n<NEEDS.length;n++){
     var N=NEEDS[n], gs=[];
     for(var x=0;x<DB.goals.length;x++) if(DB.goals[x].need===N.k) gs.push(DB.goals[x]);
     h+='<div class="spread" style="margin:14px 0 6px"><span class="eyebrow">'+N.icon+' '+N.name+'</span><button class="linklike" data-act="openGoalForm" data-a1="'+N.k+'">+ Add</button></div>';
     if(!gs.length){ h+='<div class="tiny muted" style="margin-bottom:6px">'+GOAL_PLACEHOLDER[N.k]+'</div>'; continue; }
     for(var g=0;g<gs.length;g++){
-      var G=gs[g];
-      h+='<div class="card" style="margin-bottom:10px"><div class="spread"><h3 class="serif" data-act="openGoalForm" data-a1="'+G.need+'" data-a2="'+G.id+'">'+esc(G.title)+'</h3>'
-        +'<button class="iconbtn" style="width:30px;height:30px" data-act="deleteGoal" data-a1="'+G.id+'">\u2715</button></div>';
-      if(G.actions&&G.actions.length){
-        h+='<div class="eyebrow" style="margin-top:8px">Actions</div>';
-        for(var a=0;a<G.actions.length;a++){
-          var A=G.actions[a];
-          h+='<div class="checkline"><input type="checkbox"'+(A.done?' checked':'')+' data-chg="toggleAction" data-a1="'+G.id+'" data-a2="'+A.id+'">'
-            +'<span class="small '+(A.done?'done':'')+'" style="flex:1">'+esc(A.text)+'</span>'
-            +'<button class="iconbtn" style="width:26px;height:26px;font-size:12px" data-act="delAction" data-a1="'+G.id+'" data-a2="'+A.id+'">\u2715</button></div>';
-        }
+      var G=gs[g], acts7=goalActs(G.id,days7), recent=goalActs(G.id).slice(0,3);
+      var dots='';
+      for(var d=0;d<days7.length;d++){
+        var hit=false;
+        for(var a=0;a<acts7.length;a++) if(acts7[a].date===days7[d]){hit=true;break;}
+        dots+='<span class="dot '+(hit?'d3':'')+'"></span>';
       }
-      h+='<div class="row" style="margin-top:8px"><input type="text" id="ai-'+G.id+'" placeholder="Add a concrete action\u2026" style="margin:0;flex:1">'
-        +'<button class="btn slim" data-act="addAction" data-a1="'+G.id+'">Add</button></div></div>';
+      h+='<div class="card" style="margin-bottom:10px"><div class="spread"><h3 class="serif" data-act="openGoalForm" data-a1="'+G.need+'" data-a2="'+G.id+'">'+esc(G.title)+'</h3>'
+        +'<button class="iconbtn" style="width:30px;height:30px" data-act="deleteGoal" data-a1="'+G.id+'">\u2715</button></div>'
+        +'<div class="dots" style="margin-top:8px">'+dots+'</div>'
+        +'<div class="tiny muted">'+(acts7.length?acts7.length+' thing'+(acts7.length===1?'':'s')+' in the last 7 days':'Nothing tagged yet \u2014 tag activities with this goal when you log them.')+'</div>';
+      if(recent.length){
+        h+='<div class="eyebrow" style="margin-top:8px">Recent</div>';
+        for(var r=0;r<recent.length;r++) h+='<div class="small" style="margin:3px 0">'+esc(recent[r].name)+' <span class="tiny muted">\u00b7 '+fmtDay(recent[r].date)+'</span></div>';
+      }
+      if(G.ideas) h+='<div class="eyebrow" style="margin-top:8px">Ideas</div><div class="small serif-i muted" style="margin-top:2px">'+esc(G.ideas)+'</div>';
+      h+='</div>';
     }
   }
   $('screen-goals').innerHTML=h;
@@ -777,15 +812,16 @@ function openGoalForm(need,id){
     h+='<option value="'+N.k+'"'+(selN?' selected':'')+'>'+N.name+'</option>';
   }
   h+='</select><label class="f">Goal</label><input type="text" id="gfTitle" value="'+esc(g?g.title:'')+'" placeholder="'+GOAL_PLACEHOLDER[need||'safety']+'">'
-    +'<div class="tiny muted">You\u2019ll add concrete actions to it afterwards \u2014 they matter more than the wording.</div>'
+    +'<label class="f">Ideas (optional \u2014 prompts for yourself, never tracked)</label><textarea id="gfIdeas" style="min-height:52px">'+esc(g?g.ideas||'':'')+'</textarea>'
     +'<div class="btnrow"><button class="btn" data-act="saveGoal" data-a1="'+(g?g.id:'')+'">Save goal</button><button class="btn ghost" data-act="closeModal">Cancel</button></div>';
   modal(h);
 }
 function saveGoal(id){
   var t=$('gfTitle').value.trim();
   if(!t){toast('Write the goal'); return;}
-  if(id){var g=getGoal(id); g.title=t; g.need=$('gfNeed').value;}
-  else DB.goals.push({id:uid(),need:$('gfNeed').value,title:t,actions:[]});
+  var ideas=$('gfIdeas')?$('gfIdeas').value.trim():'';
+  if(id){var g=getGoal(id); g.title=t; g.need=$('gfNeed').value; g.ideas=ideas;}
+  else DB.goals.push({id:uid(),need:$('gfNeed').value,title:t,ideas:ideas});
   persist(); closeModal(); renderGoals(); toast('Saved');
 }
 function deleteGoal(id){
@@ -945,7 +981,7 @@ function quickLog(id){
   var src=null;
   for(var i=0;i<DB.activities.length;i++) if(DB.activities[i].id===id) src=DB.activities[i];
   if(!src) return;
-  DB.activities.push({id:uid(),name:src.name,date:today(),duration:src.duration,mode:src.mode,needs:(src.needs||[]).slice(),notes:'',restFeel:null});
+  DB.activities.push({id:uid(),name:src.name,date:today(),duration:src.duration,mode:src.mode,needs:(src.needs||[]).slice(),goals:(src.goals||[]).slice(),notes:'',restFeel:null});
   persist(); renderAll(); toast('Logged: '+src.name);
 }
 var ideaShift=0;
@@ -1017,6 +1053,7 @@ var ACT={
   openActivityForm:function(el){openActivityForm(a1(el)||null);},
   actMode:function(el){actMode(a1(el));},
   toggleNeed:function(el){toggleNeed(a1(el));},
+  toggleGoal:function(el){toggleGoal(a1(el));},
   saveActivity:function(el){saveActivity(a1(el)||'');},
   deleteActivity:function(el){if(armed(el,'Tap again to delete'))deleteActivity(a1(el));},
   openExpForm:function(el){openExpForm(a1(el)||null);},
